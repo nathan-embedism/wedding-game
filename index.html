@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Vows, Please</title>
+<style>
+html,body{margin:0;background:#1a1222;color:#f6efff;font-family:"Courier New",Courier,monospace}
+body{min-height:100vh;display:flex;align-items:center;justify-content:center}
+.gate{text-align:center;padding:24px;max-width:420px;width:100%;box-sizing:border-box}
+.gate canvas{width:112px;height:96px;image-rendering:pixelated;display:block;margin:0 auto 18px}
+h1{margin:0 0 6px;font-size:34px;letter-spacing:2px;text-shadow:3px 3px 0 #e85d75,6px 6px 0 #000}
+p{margin:6px 0 18px;color:#e8b64c;font-weight:bold}
+input[type=password]{font:inherit;font-size:18px;width:100%;box-sizing:border-box;padding:10px;border:3px solid #000;background:#f4ead3;color:#2a211c}
+button{font:inherit;font-weight:bold;font-size:16px;margin-top:12px;padding:10px 18px;border:3px solid #000;background:#e8b64c;color:#2a211c;box-shadow:0 4px 0 #000;cursor:pointer;text-transform:uppercase}
+button:active{transform:translateY(3px);box-shadow:0 1px 0 #000}
+label{display:block;margin-top:12px;font-size:13px}
+.err{min-height:1.4em;margin-top:10px;color:#ff8a80;font-weight:bold}
+</style>
+</head>
+<body>
+<form class="gate" id="gate" autocomplete="off">
+  <canvas id="heart" width="7" height="6"></canvas>
+  <h1>VOWS, PLEASE</h1>
+  <p>A little wedding game. Papers, please.</p>
+  <input type="password" id="pw" placeholder="Password" aria-label="Password" autofocus>
+  <label><input type="checkbox" id="remember" checked> Remember me on this device</label>
+  <button type="submit" id="go">Enter</button>
+  <div class="err" id="err"></div>
+</form>
+<script src="payload.js"></script>
+<script>
+(function () {
+  var rows = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
+  var hg = document.getElementById('heart').getContext('2d');
+  hg.fillStyle = '#e85d75';
+  rows.forEach(function (r, y) { for (var x = 0; x < r.length; x++) if (r[x] === 'X') hg.fillRect(x, y, 1, 1); });
+
+  var KEY_STORE = 'vp_key_1';
+  var P = window.VP_PAYLOAD;
+  var err = document.getElementById('err');
+  var b64 = function (s) { return Uint8Array.from(atob(s), function (c) { return c.charCodeAt(0); }); };
+  var tob64 = function (u) { var s = ''; u = new Uint8Array(u); for (var i = 0; i < u.length; i++) s += String.fromCharCode(u[i]); return btoa(s); };
+
+  if (!P) { err.textContent = 'Game data missing.'; return; }
+  if (!window.crypto || !crypto.subtle) { err.textContent = 'This browser cannot open the game. Try a recent Chrome, Safari or Firefox over https.'; return; }
+
+  function derive(pass) {
+    return crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']).then(function (base) {
+      return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(P.s), iterations: P.n, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, true, ['decrypt']);
+    });
+  }
+  function open(key) {
+    return crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(P.i) }, key, b64(P.c)).then(function (buf) {
+      var code = new TextDecoder().decode(buf);
+      var s = document.createElement('script');
+      s.textContent = code;
+      document.body.appendChild(s);
+    });
+  }
+
+  var stored = null;
+  try { stored = localStorage.getItem(KEY_STORE); } catch (e) { stored = null; }
+  if (stored) {
+    crypto.subtle.importKey('raw', b64(stored), { name: 'AES-GCM' }, true, ['decrypt']).then(open).catch(function () {
+      try { localStorage.removeItem(KEY_STORE); } catch (e) {}
+    });
+  }
+
+  document.getElementById('gate').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var pass = document.getElementById('pw').value;
+    var remember = document.getElementById('remember').checked;
+    err.textContent = 'Checking...';
+    var k;
+    derive(pass).then(function (key) { k = key; return open(key); }).then(function () {
+      if (remember) return crypto.subtle.exportKey('raw', k).then(function (raw) { try { localStorage.setItem(KEY_STORE, tob64(raw)); } catch (e) {} });
+    }).catch(function () {
+      err.textContent = "That's not it. Check your invitation!";
+    });
+  });
+})();
+</script>
+</body>
+</html>
