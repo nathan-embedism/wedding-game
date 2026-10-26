@@ -1,10 +1,21 @@
 // Google Apps Script for the optional leaderboard.
-// 1. Create a Google Sheet. 2. Extensions > Apps Script, paste this file in.
-// 3. Deploy > New deployment > Web app. Execute as: Me. Who has access: Anyone.
-// 4. Put the web app URL into LEADERBOARD_URL in src/game.js and rebuild.
+// Works as a standalone project (script.google.com > New project), so no spreadsheet setup is needed:
+// it creates its own "Vows Please scores" sheet in your Drive on the first request.
+// Deploy > New deployment > Web app. Execute as: Me. Who has access: Anyone.
+// Put the web app URL into LEADERBOARD_URL in src/game.js and rebuild.
+function scoresSheet() {
+  const props = PropertiesService.getScriptProperties();
+  let id = props.getProperty('sheetId');
+  let ss = null;
+  if (id) { try { ss = SpreadsheetApp.openById(id); } catch (err) { ss = null; } }
+  if (!ss) {
+    ss = SpreadsheetApp.create('Vows Please scores');
+    props.setProperty('sheetId', ss.getId());
+  }
+  return ss.getSheetByName('Scores') || ss.insertSheet('Scores');
+}
 function doGet(e) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sh = ss.getSheetByName('Scores') || ss.insertSheet('Scores');
+  const sh = scoresSheet();
   const p = (e && e.parameter) || {};
   if (p.action === 'submit') {
     const lock = LockService.getScriptLock();
